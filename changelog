@@ -1,2 +1,5 @@
+1.16
+	Has corrected work with $^W=1
+
 1.15-1
 	Added PREREQ_PM keyword to Makefile.PL 

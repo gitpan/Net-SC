@@ -1,6 +1,6 @@
 ########################################################################
 #
-# $Id: SC.pm,v 1.15 2004/03/27 12:27:17 gosha Exp $
+# $Id: SC.pm,v 1.16 2004/09/24 08:20:06 gosha Exp $
 #
 #              Socks Chain ( TCP only )
 #
@@ -26,7 +26,7 @@ use Exporter;
 
 local $[ = 0;
 
-($VERSION='$Revision: 1.15 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
+($VERSION='$Revision: 1.16 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
 
 @ISA = qw( Exporter Socket );
 
@@ -110,49 +110,49 @@ use constant SOCKS_PARAM => {
 # Коды возврата Socks серверов...
 #
 
-sub SOCKS_GENERAL_SOCKS_SERVER_FAILURE		 { 1 };
+sub SOCKS_GENERAL_SOCKS_SERVER_FAILURE		{ 1 };
 
-sub SOCKS_CONNECTION_NOT_ALLOWED_BY_RULESET	 { 2 };
+sub SOCKS_CONNECTION_NOT_ALLOWED_BY_RULESET	{ 2 };
 
-sub SOCKS_NETWORK_UNREACHABLE				 { 3 };
+sub SOCKS_NETWORK_UNREACHABLE				{ 3 };
 
-sub SOCKS_HOST_UNREACHABLE					 { 4 };
+sub SOCKS_HOST_UNREACHABLE					{ 4 };
 
-sub SOCKS_CONNECTION_REFUSED				 { 5 };
+sub SOCKS_CONNECTION_REFUSED				{ 5 };
 
-sub SOCKS_TTL_EXPIRED						 { 6 };
+sub SOCKS_TTL_EXPIRED						{ 6 };
 
-sub SOCKS_COMMAND_NOT_SUPPORTED				 { 7 };
+sub SOCKS_COMMAND_NOT_SUPPORTED				{ 7 };
 
-sub SOCKS_ADDRESS_TYPE_NOT_SUPPORTED		 { 8 };
+sub SOCKS_ADDRESS_TYPE_NOT_SUPPORTED		{ 8 };
 
-sub SOCKS_OKAY								 { 90 };
+sub SOCKS_OKAY								{ 90 };
 
-sub SOCKS_FAILED							 { 91 };
+sub SOCKS_FAILED							{ 91 };
 
-sub SOCKS_NO_IDENT							 { 92 };
+sub SOCKS_NO_IDENT							{ 92 };
 
-sub SOCKS_USER_MISMATCH						 { 93 };
+sub SOCKS_USER_MISMATCH						{ 93 };
 
-sub SOCKS_INCOMPLETE_AUTH					 { 100 };
+sub SOCKS_INCOMPLETE_AUTH					{ 100 };
 
-sub SOCKS_BAD_AUTH							 { 101 };
+sub SOCKS_BAD_AUTH							{ 101 };
 
-sub SOCKS_SERVER_DENIES_AUTH_METHOD			 { 102 };
+sub SOCKS_SERVER_DENIES_AUTH_METHOD			{ 102 };
 
-sub SOCKS_MISSING_SOCKS_SERVER_NET_DATA		 { 202 };
+sub SOCKS_MISSING_SOCKS_SERVER_NET_DATA		{ 202 };
 
-sub SOCKS_MISSING_PEER_NET_DATA				 { 203 };
+sub SOCKS_MISSING_PEER_NET_DATA				{ 203 };
 
-sub SOCKS_SOCKS_SERVER_UNAVAILABLE			 { 204 };
+sub SOCKS_SOCKS_SERVER_UNAVAILABLE			{ 204 };
 
-sub SOCKS_TIMEOUT							 { 205 };
+sub SOCKS_TIMEOUT							{ 205 };
 
-sub SOCKS_UNSUPPORTED_PROTOCOL_VERSION		 { 206 };
+sub SOCKS_UNSUPPORTED_PROTOCOL_VERSION		{ 206 };
 
-sub SOCKS_UNSUPPORTED_ADDRESS_TYPE			 { 207 };
+sub SOCKS_UNSUPPORTED_ADDRESS_TYPE			{ 207 };
 
-sub SOCKS_HOSTNAME_LOOKUP_FAILURE			 { 208 };
+sub SOCKS_HOSTNAME_LOOKUP_FAILURE			{ 208 };
 
 #
 # Конструктор...
@@ -492,8 +492,8 @@ sub read_chain_data {
 		push @{$self->configure( 'CHAIN_DATA' )}, {
 						addr				=> $socks_host,
 						port				=> $socks_port,
-						user_id				=> $socks_user,
-						user_pswd			=> $socks_pswd,
+						user_id				=> $socks_user || '',
+						user_pswd			=> $socks_pswd || '',
 						protocol_version	=> $socks_proto,
 						last_check_time		=> 0,
 						attempt_cnt			=> 0 };
@@ -596,8 +596,8 @@ sub dump_cfg_data {
 	foreach $id ( 0 .. $#{$self->configure( 'CHAIN_DATA' )} ) {
 		$key = join( "\x00",	$self->configure( 'CHAIN_DATA' )->[$id]->{addr},
 								$self->configure( 'CHAIN_DATA' )->[$id]->{port},
-								$self->configure( 'CHAIN_DATA' )->[$id]->{user_id},
-								$self->configure( 'CHAIN_DATA' )->[$id]->{user_pswd},
+								$self->configure( 'CHAIN_DATA' )->[$id]->{user_id} || '',
+								$self->configure( 'CHAIN_DATA' )->[$id]->{user_pswd} || '',
 								$self->configure( 'CHAIN_DATA' )->[$id]->{protocol_version}
 					);
 		unless ( defined $hash{$key} ) {
@@ -658,8 +658,8 @@ sub restore_cfg_data {
 	foreach $id ( 0 .. $#{$self->configure( 'CHAIN_DATA' )} ) {
 		$key = join( "\x00",	$self->configure( 'CHAIN_DATA' )->[$id]->{addr},
 								$self->configure( 'CHAIN_DATA' )->[$id]->{port},
-								$self->configure( 'CHAIN_DATA' )->[$id]->{user_id},
-								$self->configure( 'CHAIN_DATA' )->[$id]->{user_pswd},
+								$self->configure( 'CHAIN_DATA' )->[$id]->{user_id} || '',
+								$self->configure( 'CHAIN_DATA' )->[$id]->{user_pswd} || '',
 								$self->configure( 'CHAIN_DATA' )->[$id]->{protocol_version}
 					);
 #
@@ -705,10 +705,13 @@ sub dump_cfg_filter {
 		$val = shift;
 		
 		next unless exists SOCKS_PARAM->{$key};
-			
-		$val =~ s#[\x00\n]##g;
-
-		push @param, $key, $val;
+		
+		unless ( defined $val ) {
+			push @param, $key, '';
+		} else {
+			$val =~ s#[\x00\n]##g;
+			push @param, $key, $val;
+		}
 	}
 	return @param;
 }
@@ -1323,8 +1326,12 @@ sub get_resp5 {
 	return $self->socks_param( 'cd' );
 }
 
+#
+# так..., почистим за собой...
+#
+sub DESTROY	{};
+
 1;
-__END__
 
 =head1 NAME
 
@@ -1612,17 +1619,11 @@ Methods connect, bind, accept returnings SOCKS_OKAY if it succeeded.
 
 perl, RFC 1928, RFC 1929, ...
 
-
-=head1 HOME PAGE
-
- 
-http://home.sinn.ru/~gosha/perl-scripts/
-
-
 =head1 AUTHOR
 
  
 
  Okunev Igor V.  mailto:igor@prv.mts-nn.ru
                  http://www.mts-nn.ru/~gosha
+				 icq:106183300
 
