@@ -1,10 +1,10 @@
 ########################################################################
 #
-# $Id: SC.pm,v 1.16 2004/09/24 08:20:06 gosha Exp $
+# $Id: SC.pm,v 1.18 2005/01/10 11:32:19 gosha Exp $
 #
 #              Socks Chain ( TCP only )
 #
-# Copyright (C)  Okunev Igor gosha@prv.mts-nn.ru 2002-2004
+# Copyright (C)  Okunev Igor gosha@prv.mts-nn.ru 2002-2005
 #
 #      All rights reserved. This program is free software;
 #      you can redistribute it and/or modify it under the
@@ -16,19 +16,17 @@ package Net::SC;
 use strict;
 use vars qw( @ISA @EXPORT $VERSION );
 
-use Sys::Syslog qw(:DEFAULT setlogsock);
 use Fcntl qw(:DEFAULT :flock);
 use Symbol;
-use Socket;
-use Errno;
 use Config;
 use Exporter;
+use IO::Socket;
 
 local $[ = 0;
 
-($VERSION='$Revision: 1.16 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
+($VERSION='$Revision: 1.18 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
 
-@ISA = qw( Exporter Socket );
+@ISA = qw( Exporter );
 
 @EXPORT = qw(	socks_error
 
@@ -171,6 +169,8 @@ sub new {
 						LOG_FILE		=> undef,
 						TIMEOUT			=> 180,
 
+						CHAIN_FILE_DATA	=> undef,
+
 						CHECK_DELAY		=> 24 * 3600,
 
 						DEBUG			=> 0x09,
@@ -183,7 +183,7 @@ sub new {
 											     # 0x02 - проверка Socks 4
 						LOG_FH			=> undef,
 
-						SYSLOG			=> undef,# 'unix' or 'inet'
+						SYSLOG			=> 0,
 
 						LOG_SOCKS_FIELD	=> [ qw( addr port user_id protocol_version ) ]
 	);
@@ -207,23 +207,44 @@ sub new {
 #
 # Готовим место для данных из файла конфигурации
 #
-	$self->{CFG_CHAIN_DATA} = undef;
+	undef $self->{CFG_CHAIN_DATA};
 
 	unless ( defined $self->configure( 'TIMEOUT' ) ) {
 		$self->configure( TIMEOUT => 0 );
 	}
 #
-# Если установлена переменная SYSLOG то лог пишется через него,
+# Если установлена переменная SYSLOG то лог пишется через:
+# *nix - syslogd,
+# win32 - eventlog,
 # иначе если возможно открываем LOG файл, так же можно напрямую передать
 # дескриптор файла  в LOG_FH, но тогда надо чтоб LOG_FILE был undef...
 #
-	if ( defined $self->configure( 'SYSLOG' ) ) {
-		unless ( defined setlogsock( $self->configure( 'SYSLOG' ) ) ) {
-			$self->configure( SYSLOG => undef );
-			$self->log_error("Can't `setlogsock' : $!");
-		} elsif ( not defined openlog( 'sc45', 'cons,pid', 'daemon') ) {
-			$self->configure( SYSLOG => undef );
-			$self->log_error("Can't `openlog' : $!");
+	if ( $self->configure( 'SYSLOG' ) ) {
+		if ( $^O =~ /[Ww]in32/ ) {
+			require Win32::EventLog;
+
+			$self->configure( 'LOG_FH' => Win32::EventLog->new( 'sc45', '' ) );
+
+			unless ( defined $self->configure( 'LOG_FH' ) ) {
+					$self->configure( SYSLOG => 0 );
+					$self->log_error( "Cannot open EventLog:" . Win32::GetLastError() );
+			}
+		} else {
+			require Sys::Syslog;
+			import  Sys::Syslog qw(:DEFAULT setlogsock );
+
+			if ( $^O ne 'solaris' && $^O ne 'freebsd' &&
+					eval { &Sys::Syslog::_PATH_LOG() } ) {
+
+				unless ( defined setlogsock( 'unix' ) ) {
+					$self->configure( SYSLOG => 0 );
+					$self->log_error("Can't `setlogsock' : $!");
+				}
+			}
+			if ( not defined openlog( 'sc45', 'cons,pid', 'daemon') ) {
+				$self->configure( SYSLOG => 0 );
+				$self->log_error("Can't `openlog' : $!");
+			}
 		}
 	} elsif ( defined $self->configure( 'LOG_FILE' ) ) {
 		$key = gensym;
@@ -369,9 +390,9 @@ sub sh {
 sub close {
 	my $self = shift;
 
-	shutdown $self->sh, 2;
+	$self->sh->shutdown(2);
 
-	ungensym $self->{sock_h};
+	$self->sh->close;
 
 	undef $self->{sock_h};
 }
@@ -445,29 +466,48 @@ sub socks_error {
 #
 # Если все OK то возвращает SOCKS_OKAY
 #
+# С версии 1.17 также можно отказаться от чтения данных из конфигурационного
+# файла ( new( CHAIN_FILE_DATA => [ 'str1', .., 'strN' ] ) )
+# где strX - строка в формате описанном выше...
+#
 
 sub read_chain_data {
 	my $self = shift;
-	my ( $socks_host, $socks_port, $socks_user, $socks_pswd, $socks_proto, $sym, $line );
 	local $_;
-
-	$sym = gensym;
 
 	$self->configure( CHAIN_DATA => [] );
 
-	unless ( open($sym, '<' . $self->configure( 'CHAIN_FILE' ) ) ) {
-		$self->log_error("Can't open file " . $self->configure( 'CHAIN_FILE' ) ." : $!");
-		return SOCKS_FAILED;
-	}
-	my_flock ( $sym, LOCK_SH );
-	$line = 0;
-	while ( <$sym> ) {
-		$line++;
-		next if /^#/ || /^\s*$/;
-		chomp;
+	my @data;
 
-		( $socks_host, $socks_port,
-			$socks_user, $socks_pswd, $socks_proto ) = split(/\s*:\s*/, $_);
+	if ( defined $self->configure( 'CHAIN_FILE_DATA' ) and
+		 ref $self->configure( 'CHAIN_FILE_DATA' ) eq 'ARRAY' ) {
+
+		 @data = @{ $self->configure( 'CHAIN_FILE_DATA' ) };
+	} else {
+		my $sym = gensym;
+
+		unless ( open($sym, '<' . $self->configure( 'CHAIN_FILE' ) ) ) {
+			$self->log_error("Can't open file " . $self->configure( 'CHAIN_FILE' ) ." : $!");
+			return SOCKS_FAILED;
+		}
+
+		my_flock ( $sym, LOCK_SH );
+
+		@data = <$sym>;
+
+		CORE::close $sym;
+
+		ungensym $sym;
+	}
+
+	chomp @data;
+
+	for my $line ( 0 .. $#data ) {
+
+		next if $data[$line] =~ /^#/ || $data[$line] =~ /^\s*$/;
+
+		my ( $socks_host, $socks_port,
+			$socks_user, $socks_pswd, $socks_proto ) = split( /\s*:\s*/, $data[$line] );
 
 		unless ( defined $socks_host and length $socks_host ) {
 			$self->log_error( "Parse config: host name not defined [ $line ]" );
@@ -498,9 +538,6 @@ sub read_chain_data {
 						last_check_time		=> 0,
 						attempt_cnt			=> 0 };
 	}
-	CORE::close $sym;
-
-	ungensym $sym;
 
 	if ( scalar @{$self->configure( 'CHAIN_DATA' )} ) {
 		return SOCKS_OKAY;
@@ -584,7 +621,7 @@ sub dump_cfg_data {
 	}
 	$sym = gensym;
 #
-# В качестве лок файла - используем текстовы конфигурационный файл 
+# В качестве лок файла - используем текстовы конфигурационный файл
 #
 	unless ( open( $sym, '<'. $self->configure( 'CHAIN_FILE' ) ) ) {
 		$self->log_error("Can't open file " . $self->configure( 'CHAIN_FILE' ) . " : $!");
@@ -592,7 +629,7 @@ sub dump_cfg_data {
 		return SOCKS_FAILED;
 	}
 	my_flock ( $sym, LOCK_EX );
-	
+
 	foreach $id ( 0 .. $#{$self->configure( 'CHAIN_DATA' )} ) {
 		$key = join( "\x00",	$self->configure( 'CHAIN_DATA' )->[$id]->{addr},
 								$self->configure( 'CHAIN_DATA' )->[$id]->{port},
@@ -640,10 +677,10 @@ sub restore_cfg_data {
 		dbmclose %hash;
 		return SOCKS_OKAY;
 	}
-	
+
 	$sym = gensym;
 #
-# В качестве лок файла - используем текстовы конфигурационный файл 
+# В качестве лок файла - используем текстовы конфигурационный файл
 #
 	unless ( open( $sym, '<'. $self->configure( 'CHAIN_FILE' ) ) ) {
 		$self->log_error("Can't open file " . $self->configure( 'CHAIN_FILE' ) . " : $!");
@@ -703,9 +740,9 @@ sub dump_cfg_filter {
 
 	while ( defined ( $key = shift @_ ) ) {
 		$val = shift;
-		
+
 		next unless exists SOCKS_PARAM->{$key};
-		
+
 		unless ( defined $val ) {
 			push @param, $key, '';
 		} else {
@@ -867,12 +904,19 @@ sub my_flock {
 sub debug {
 	my $self = shift;
 
-	unless ( ref $self and defined $self->configure( 'SYSLOG' ) ) {
-		return log_error( $self, @_);
+#
+# syslogd
+#
+	if ( ref $self and $self->configure( 'SYSLOG' ) and $^O !~ /[Ww]in32/ ) {
+		foreach ( @_ ) {
+			syslog( 'debug', '%s [ %d ]', $_, (caller)[-1] ) unless /^\s*$/;
+		}
+		return 1; 
 	}
-	foreach ( @_ ) {
-		syslog( 'debug', '%s [ %d ]', $_, (caller)[-1] ) unless /^\s*$/;
-	}
+#
+# Все остальное
+#
+	return log_error( $self, @_);
 }
 
 #
@@ -885,10 +929,26 @@ sub log_error {
 	my $sym;
 	local $_;
 
-	if ( ref $self and defined $self->configure( 'SYSLOG' ) ) {
+#
+# syslogd
+#
+	if ( ref $self and $self->configure( 'SYSLOG' ) and $^O !~ /[Ww]in32/ ) {
 		foreach ( @_ ) {
 			syslog( 'warning', '%s [ %d ]', $_, (caller)[-1] ) unless /^\s*$/;
 		}
+	} elsif (	ref $self and
+				$self->configure( 'SYSLOG' ) and
+				defined $self->configure( 'LOG_FH' ) ) {
+#
+# eventlog
+#
+		$self->configure('LOG_FH')->Report( {
+				Category	=> 20,
+				EventType	=> Win32::EventLog::EVENTLOG_INFORMATION_TYPE(),
+				Strings		=> join( "\n", '', @_ ),
+				Data		=> '',
+				EventID		=> 0
+		} );
 	} else {
 		unless ( ref $self ) {
 			unshift @_, $self;
@@ -932,56 +992,23 @@ sub log_str {
 
 sub first_connect {
 	my $self = shift;
-	my $sh = gensym;
 	local $_;
 
-	my $rc = eval {
-		local $SIG{__DIE__}	= sub { die @_ };
+	$self->{sock_h} = new IO::Socket::INET (
+				PeerAddr	=> $self->socks_param( 'addr' ),
+				PeerPort	=> $self->socks_param( 'port' ),
+				Timeout		=> $self->configure( 'TimeOut' ),
+				Proto		=> 'tcp'
+	);
 
-		socket( $sh, PF_INET, SOCK_STREAM, getprotobyname('tcp') ) || die "socket: $!\n";
-
-		my $sin = sockaddr_in(	$self->socks_param( 'port' ),
-								inet_aton( $self->socks_param( 'addr' ) ) );
-
-		fcntl( $sh, F_SETFL, O_NONBLOCK ) || die "fcntl: $!\n";
-
-		if ( CORE::connect( $sh, $sin ) ) {
-			die "Connect failed\n";
-		} else {
-			Errno::EINPROGRESS == $! or Errno::EWOULDBLOCK or die "connect: $!\n";
-			vec( my $win = '', fileno( $sh ), 1 ) = 1;
-
-			unless ( select( undef, $win, undef, $self->configure( 'TimeOut' ) ) ) {
-				die "TimeOut\n";
-			}
-
-			if ( defined ( my $ret = getsockopt( $sh, SOL_SOCKET, SO_ERROR ) ) ) {
-				if ( $! = unpack( 'i', $ret ) ) {
-					die "Connection failed: $!\n"
-				}
-			} elsif ( ! getpeername( $sh ) ) {
-				die "Connection failed: $!\n";
-			}
-		}
-
-		fcntl( $sh, F_SETFL, 0 ) or die "fcntl: $!\n";
-	};
-
-	if ( not defined $rc or not defined $sh ) {
-		{
-			local $^W = 0;
-			CORE::close $sh;
-		}
-		ungensym $sh;
-		$self->log_error( $@, "Can't create network socket..." );
+	unless ( defined $self->sh ) {
+		$self->log_error( $@, "Can't create network socket... : $!" );
 		return SOCKS_FAILED;
 	}
 
-	binmode $sh;
-
-	select((select($sh), $| = 1)[0]);
-
-	$self->{sock_h} = $sh;
+	binmode $self->sh;
+	
+	$self->sh->autoflush(1);
 
 	return SOCKS_OKAY;
 }
@@ -1333,6 +1360,7 @@ sub DESTROY	{};
 
 1;
 
+__END__
 =head1 NAME
 
  
@@ -1368,6 +1396,34 @@ Net::SC - perl module for create the chain from the SOCKS servers.
  print $sh, "Hello !!!\n";
  ...
 
+ --- or ---
+
+ ...
+ $self = new Net::SC(
+                     Timeout         => ( $opt{'to'}  || 10      ),
+                     Chain_Len       => ( $opt{'l'}   || 2       ),
+                     Debug           => ( $opt{'d'}   || 0x04    ),
+                     Random_Chain    => ( $opt{'rnd'} || 0       ),
+                     Auto_Save       => 0,
+                     Chain_File_Data => [
+                                          '200.41.23.164:1080:::4:383 b/s Argentina',
+                                          '24.232.88.160:1080:::4:1155 b/s Argentina',
+                                        ],
+                  );
+
+ die unless ref $self;
+
+ unless ( ( $rc = $self->connect( $host, $port ) ) == SOCKS_OKAY ) {
+   print STDERR "Can't connect to $host:$port [".( socks_error($rc) )."]\n";
+   exit;
+ }
+
+ $sh = $self->sh;
+
+ print $sh, "Hello !!!\n";
+ ...
+ $self->close;
+ ...
 
  #  BIND THE PORT
  # ---------------
@@ -1429,32 +1485,43 @@ For more information see examples: telnet_over_socks_chain.pl and accept_over_so
 
  
 
- TIMEOUT       - Time Out in seconds.
+ TIMEOUT         - Time Out in seconds.
 
- CHAIN_LEN     - Length of chain.
+ CHAIN_LEN       - Length of chain.
 
- DEBUG         - Debug level ( 0x00 | 0x01 | 0x02 | 0x04 )
-                 0x00 - Off
-                 0x01 - Debug On
-                 0x02 - Write all answers of socks servers.
-                 0x04 - Write all requests of socks servers.
-                 0x08 - Extended error information.
+ DEBUG           - Debug level ( 0x00 | 0x01 | 0x02 | 0x04 )
+                   0x00 - Off
+                   0x01 - Debug On
+                   0x02 - Write all answers of socks servers.
+                   0x04 - Write all requests of socks servers.
+                   0x08 - Extended error information.
 
- CHAIN_FILE    - Configuration file name.
+ CHAIN_FILE      - Configuration file name.
 
- LOG_FILE      - Log file name. if undef, writing
-                 all errors to STDERR or `syslogd`
+ CHAIN_FILE_DATA - Array reference. ( a format same as well as
+                   in a file of a configuration ). It is possible
+                   to use for data transmission about chains directly,
+                   without use of a file of a configuration. At use
+                   of the given parameter, parameter CHAIN_FILE is
+                   ignored, that is the file of a configuration
+                   is not read.
 
- RANDOM_CHAIN  - Rule for create the chains ( 0 || 1 ).
-                 0 - create chain by index...
-                 1 - create chain by random...
+ LOG_FILE        - Log file name. if undef, writing
+                   all errors to STDERR or `syslogd`
 
- CHECK_DELAY   - Delay time for the next usage this proxy if
-                 the last connection failed ( in seconds )
+ RANDOM_CHAIN    - Rule for create the chains ( 0 || 1 ).
+                   0 - create chain by index...
+                   1 - create chain by random...
 
- AUTO_SAVE     - Auto save the data of chain to the cache file. 
+ CHECK_DELAY     - Delay time for the next usage this proxy if
+                   the last connection failed ( in seconds )
 
- LOG_FH        - File Descriptor of LOG file.
+ AUTO_SAVE       - Auto save the data of chain to the cache file. 
+
+ LOG_FH          - File Descriptor of LOG file.
+
+ SYSLOG          - 1 - Use syslogd ( for *nix ), or eventlog
+                   ( for win32 ) for debug messages. Default 0.
 
 =back
 
@@ -1625,5 +1692,5 @@ perl, RFC 1928, RFC 1929, ...
 
  Okunev Igor V.  mailto:igor@prv.mts-nn.ru
                  http://www.mts-nn.ru/~gosha
-				 icq:106183300
+                 icq:106183300
 

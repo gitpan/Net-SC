@@ -5,8 +5,5 @@ WriteMakefile(
 	'EXE_FILES'		=> [ 'Contrib/telnet_over_socks_chain.pl', 'Contrib/scssh', 'Contrib/sctelnet' ],
 	'VERSION_FROM'	=> 'lib/Net/SC.pm',
 	'AUTHOR'		=> 'Igor Okunev <igor@prv.mts-nn.ru>',
-	'PREREQ_PM'		=> {
-		'Sys::Syslog'	=> 0
-	}
 );
 

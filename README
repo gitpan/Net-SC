@@ -1,22 +1,26 @@
-Net-SC version 1.15
+Net-SC version 1.18
 ===================
 
 INSTALLATION
 
 To install this module type the following:
 
-   perl Makefile.PL
-   make
-   make test
-   make install
+	perl Makefile.PL
+	make
+	make test
+	make install
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) by  Okunev Igor gosha@prv.mts-nn.ru 2002-2004
+	Copyright (C) by  Okunev Igor gosha@prv.mts-nn.ru 2002-2005
 
-All rights reserved. This program is free software;
-you can redistribute it and/or modify it under the
-same terms as Perl itself.
+	All rights reserved. This program is free software;
+	you can redistribute it and/or modify it under the
+	same terms as Perl itself.
+			
+NAME
+    Net::SC - perl module for create the chain from the SOCKS servers.
+
 
 SYNOPSIS
      # CONNECT TO HOST
@@ -42,6 +46,35 @@ SYNOPSIS
      $sh = $self->sh;
 
      print $sh, "Hello !!!\n";
+     ...
+
+     --- or ---
+
+     ...
+     $self = new Net::SC(
+                         Timeout         => ( $opt{'to'}  || 10      ),
+                         Chain_Len       => ( $opt{'l'}   || 2       ),
+                         Debug           => ( $opt{'d'}   || 0x04    ),
+                         Random_Chain    => ( $opt{'rnd'} || 0       ),
+                         Auto_Save       => 0,
+                         Chain_File_Data => [
+                                              '200.41.23.164:1080:::4:383 b/s Argentina',
+                                              '24.232.88.160:1080:::4:1155 b/s Argentina',
+                                            ],
+                      );
+
+     die unless ref $self;
+
+     unless ( ( $rc = $self->connect( $host, $port ) ) == SOCKS_OKAY ) {
+       print STDERR "Can't connect to $host:$port [".( socks_error($rc) )."]\n";
+       exit;
+     }
+
+     $sh = $self->sh;
+
+     print $sh, "Hello !!!\n";
+     ...
+     $self->close;
      ...
 
      #  BIND THE PORT
@@ -93,32 +126,43 @@ SYNOPSIS
 DESCRIPTION
   CONSTRUCTOR
     new
-          TIMEOUT       - Time Out in seconds.
+          TIMEOUT         - Time Out in seconds.
 
-          CHAIN_LEN     - Length of chain.
+          CHAIN_LEN       - Length of chain.
 
-          DEBUG         - Debug level ( 0x00 | 0x01 | 0x02 | 0x04 )
-                          0x00 - Off
-                          0x01 - Debug On
-                          0x02 - Write all answers of socks servers.
-                          0x04 - Write all requests of socks servers.
-                          0x08 - Extended error information.
+          DEBUG           - Debug level ( 0x00 | 0x01 | 0x02 | 0x04 )
+                            0x00 - Off
+                            0x01 - Debug On
+                            0x02 - Write all answers of socks servers.
+                            0x04 - Write all requests of socks servers.
+                            0x08 - Extended error information.
 
-          CHAIN_FILE    - Configuration file name.
+          CHAIN_FILE      - Configuration file name.
 
-          LOG_FILE      - Log file name. if undef, writing
-                          all errors to STDERR or `syslogd`
+          CHAIN_FILE_DATA - Array reference. ( a format same as well as
+                            in a file of a configuration ). It is possible
+                            to use for data transmission about chains directly,
+                            without use of a file of a configuration. At use
+                            of the given parameter, parameter CHAIN_FILE is
+                            ignored, that is the file of a configuration
+                            is not read.
 
-          RANDOM_CHAIN  - Rule for create the chains ( 0 || 1 ).
-                          0 - create chain by index...
-                          1 - create chain by random...
+          LOG_FILE        - Log file name. if undef, writing
+                            all errors to STDERR or `syslogd`
 
-          CHECK_DELAY   - Delay time for the next usage this proxy if
-                          the last connection failed ( in seconds )
+          RANDOM_CHAIN    - Rule for create the chains ( 0 || 1 ).
+                            0 - create chain by index...
+                            1 - create chain by random...
 
-          AUTO_SAVE     - Auto save the data of chain to the cache file. 
+          CHECK_DELAY     - Delay time for the next usage this proxy if
+                            the last connection failed ( in seconds )
 
-          LOG_FH        - File Descriptor of LOG file.
+          AUTO_SAVE       - Auto save the data of chain to the cache file. 
+
+          LOG_FH          - File Descriptor of LOG file.
+
+          SYSLOG          - 1 - Use syslogd ( for *nix ), or eventlog
+                            ( for win32 ) for debug messages. Default 0.
 
   METHODS
     connect   Create new connection to remote host.
@@ -246,11 +290,8 @@ CONFIG FORMAT
 SEE ALSO
     perl, RFC 1928, RFC 1929, ...
 
-HOME PAGE
-    http://home.sinn.ru/~gosha/perl-scripts/
-
 AUTHOR
      Okunev Igor V.  mailto:igor@prv.mts-nn.ru
                      http://www.mts-nn.ru/~gosha
                      icq:106183300
-								 
+
