@@ -1,8 +1,11 @@
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
-	NAME			=> 'Net::SC',
-	VERSION_FROM	=> 'lib/Net/SC.pm',
-	AUTHOR			=> 'Igor Okunev <igor@prv.mts-nn.ru>',
+	'NAME'			=> 'Net::SC',
+	'VERSION_FROM'	=> 'lib/Net/SC.pm',
+	'AUTHOR'		=> 'Igor Okunev <igor@prv.mts-nn.ru>',
+	'PREREQ_PM'		=> {
+		'Sys::Syslog'	=> 0
+	}
 );
 
