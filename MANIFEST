@@ -1,0 +1,16 @@
+Makefile.PL
+MANIFEST
+README
+test.pl
+lib/Net/SC.pm
+Contrib/accept_over_socks_chain.pl
+Contrib/dump_swap.pl
+Contrib/http_over_socks_chain.pl
+Contrib/SC.conf
+Contrib/sc.dump
+Contrib/scssh
+Contrib/sctelnet
+Contrib/telnet_over_socks_chain.pl
+Contrib/Docs/CHANGELOG.html
+Contrib/Docs/ReadMe.html
+Contrib/Docs/SC.html

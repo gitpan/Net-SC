@@ -1,0 +1,396 @@
+<HTML>
+<HEAD>
+<TITLE>NAME</TITLE>
+</HEAD>
+
+<BODY>
+
+<!-- INDEX BEGIN -->
+
+<UL>
+
+	<LI><A HREF="#NAME">NAME</A>
+	<LI><A HREF="#SYNOPSIS">SYNOPSIS</A>
+	<LI><A HREF="#DESCRIPTION">DESCRIPTION</A>
+	<UL>
+
+		<LI><A HREF="#CONSTRUCTOR">CONSTRUCTOR</A>
+		<LI><A HREF="#METHODS">METHODS</A>
+	</UL>
+
+	<LI><A HREF="#ANY_ROUTINES">ANY ROUTINES</A>
+	<LI><A HREF="#NOTES">NOTES</A>
+	<LI><A HREF="#CONFIG_FORMAT">CONFIG FORMAT</A>
+	<LI><A HREF="#SEE_ALSO">SEE ALSO</A>
+	<LI><A HREF="#AUTHOR">AUTHOR</A>
+</UL>
+<!-- INDEX END -->
+
+<HR>
+<P>
+<H1><A NAME="NAME">NAME</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+Net::SC - perl module for create the chain from the SOCKS servers.
+
+<P>
+<HR>
+<H1><A NAME="SYNOPSIS">SYNOPSIS</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+<PRE> # CONNECT TO HOST
+ # ----------------
+</PRE>
+<P>
+<PRE> ...
+ $self = new Net::SC(
+                     Timeout         =&gt; ( $opt{'to'}  || 10      ),
+                     Chain_Len       =&gt; ( $opt{'l'}   || 2       ),
+                     Debug           =&gt; ( $opt{'d'}   || 0x04    ),
+                     Log_File        =&gt; ( $opt{'lf'}  || undef   ),
+                     Random_Chain    =&gt; ( $opt{'rnd'} || 0       ),
+                     Auto_Save       =&gt; 1
+                  );
+</PRE>
+<P>
+<PRE> die unless ref $self;
+</PRE>
+<P>
+<PRE> unless ( ( $rc = $self-&gt;connect( $host, $port ) ) == SOCKS_OKAY ) {
+   print STDERR &quot;Can't connect to $host:$port [&quot;.( socks_error($rc) ).&quot;]\n&quot;;
+   exit;
+ }
+</PRE>
+<P>
+<PRE> $sh = $self-&gt;sh;
+</PRE>
+<P>
+<PRE> print $sh, &quot;Hello !!!\n&quot;;
+ ...
+</PRE>
+<P>
+<PRE> #  BIND THE PORT
+ # ---------------
+ 
+ ...
+ $self = new Net::SC(
+                     Timeout         =&gt; ( $opt{'to'}  || 10      ),
+                     Chain_len       =&gt; ( $opt{'l'}   || 2       ),
+                     Debug           =&gt; ( $opt{'d'}   || 0x04    ),
+                     Log_file        =&gt; ( $opt{'lf'}  || undef   ),
+                     Random_chain    =&gt; ( $opt{'rnd'} || 0       ),
+                     Auto_save       =&gt; 1
+                  );
+</PRE>
+<P>
+<PRE> die unless ref $self;
+</PRE>
+<P>
+<PRE> unless ( ( $rc = $self-&gt;bind( $host, $port ) ) == SOCKS_OKAY ) {
+   print STDERR &quot;Can't bind port [&quot;.( socks_error($rc) ).&quot;]\n&quot;;
+   exit;
+ }
+</PRE>
+<P>
+<PRE> print STDOUT &quot;Binding the port : &quot;,
+               $self-&gt;socks_param('listen_port'), &quot;\n&quot;;
+ print STDOUT &quot;     in the host : &quot;,
+               $self-&gt;socks_param('listen_addr'), &quot;\n&quot;;
+ print STDOUT &quot;     for $host\n&quot;;
+        
+ $self-&gt;configure( TIMEOUT =&gt; 45 );
+ unless ( ( $rc = $self-&gt;accept() ) == SOCKS_OKAY ) {
+        return $rc;
+ } else {
+   $sh = $self-&gt;sh;
+ }
+ 
+ print STDOUT 'Connect from: ',
+                        $self-&gt;socks_param('listen_addr'), ':',
+                        $self-&gt;socks_param('listen_port'), &quot;\n&quot;;
+</PRE>
+<P>
+<PRE> print $sh 'Hello : ', $self-&gt;socks_param('listen_addr'), &quot;\n&quot;;
+ print $sh ' port : ', $self-&gt;socks_param('listen_port'), &quot;\n&quot;;
+</PRE>
+<P>
+<PRE> print STDOUT &lt;$sh&gt;;
+ ...
+ 
+</PRE>
+<P>
+For more information see examples: telnet_over_socks_chain.pl and
+accept_over_socks_chain.pl
+
+<P>
+<HR>
+<H1><A NAME="DESCRIPTION">DESCRIPTION</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+<HR>
+<H2><A NAME="CONSTRUCTOR">CONSTRUCTOR</A></H2>
+<P>
+<PRE> 
+</PRE>
+<DL>
+<DT><STRONG><A NAME="item_new">new</A></STRONG><DD>
+<P>
+<PRE> 
+</PRE>
+<P>
+<PRE> TIMEOUT       - Time Out in seconds.
+</PRE>
+<P>
+<PRE> CHAIN_LEN     - Length of chain.
+</PRE>
+<P>
+<PRE> DEBUG         - Debug level ( 0x00 | 0x01 | 0x02 | 0x04 )
+                 0x00 - Off
+                 0x01 - Debug On
+                 0x02 - Write all answers of socks servers.
+                 0x04 - Write all requests of socks servers.
+                 0x08 - Extended error information.
+</PRE>
+<P>
+<PRE> CHAIN_FILE    - Configuration file name.
+</PRE>
+<P>
+<PRE> LOG_FILE      - Log file name. if undef, writing
+                 all errors to STDERR or `syslogd`
+</PRE>
+<P>
+<PRE> RANDOM_CHAIN  - Rule for create the chains ( 0 || 1 ).
+                 0 - create chain by index...
+                 1 - create chain by random...
+</PRE>
+<P>
+<PRE> CHECK_DELAY   - Delay time for the next usage this proxy if
+                 the last connection failed ( in seconds )
+</PRE>
+<P>
+<PRE> AUTO_SAVE     - Auto save the data of chain to the cache file. 
+</PRE>
+<P>
+<PRE> LOG_FH        - File Descriptor of LOG file.
+</PRE>
+</DL>
+<P>
+<HR>
+<H2><A NAME="METHODS">METHODS</A></H2>
+<P>
+<PRE> 
+</PRE>
+<DL>
+<DT><STRONG><A NAME="item_connect">connect</A></STRONG><DD>
+<P>
+Create new connection to remote host.
+
+<P>
+<PRE> Usage:
+</PRE>
+<P>
+<PRE>  die unless $self-&gt;connect( $peer_host, $peer_port ) == SOCKS_OKAY;
+</PRE>
+<DT><STRONG><A NAME="item_bind">bind</A></STRONG><DD>
+<P>
+Binding port.
+
+<P>
+<PRE> Usage:
+</PRE>
+<P>
+<PRE>  die unless $self-&gt;bind( $peer_host, $peer_port ) == SOCKS_OKAY;
+</PRE>
+<DT><STRONG><A NAME="item_accept">accept</A></STRONG><DD>
+<P>
+Accepting connection over SOCKS
+
+<P>
+<PRE> Usage:
+</PRE>
+<P>
+<PRE>  die unless $self-&gt;accept() == SOCKS_OKAY;
+  $sh = $self-&gt;sh;
+</PRE>
+<DT><STRONG><A NAME="item_sh">sh</A></STRONG><DD>
+<P>
+Returns the sock handle
+
+<P>
+<PRE> Usage:
+</PRE>
+<P>
+<PRE>  $sh = $self-&gt;sh;
+</PRE>
+<DT><STRONG><A NAME="item_close">close</A></STRONG><DD>
+<P>
+Close the connection.
+
+<P>
+<PRE> Usage:
+</PRE>
+<P>
+<PRE>  $self-&gt;close;
+</PRE>
+<DT><STRONG><A NAME="item_configure">configure</A></STRONG><DD>
+<P>
+Returns [ and modify ] the current configuration options.
+
+<P>
+<PRE> Usage:
+  
+  # Change TIMEOUT
+  $self-&gt;configure( TIMEOUT =&gt; 10 );
+</PRE>
+<P>
+<PRE>  # Returns TIMEOUT
+  $timeout = $self-&gt;configure( 'TIMEOUT' );
+</PRE>
+<DT><STRONG><A NAME="item_socks_param">socks_param</A></STRONG><DD>
+<P>
+Returns parameters of the last server into the chain socks...
+
+<P>
+<PRE> Usage:
+</PRE>
+<P>
+<PRE>  $listen_addr = $self-&gt;socks_param( 'listen_Addr' );
+</PRE>
+<P>
+<PRE> or:
+</PRE>
+<P>
+<PRE>  $all_param = $self-&gt;socks_param();
+  $listen_addr = $all_param-&gt;{'listen_addr'};
+</PRE>
+</DL>
+<P>
+<HR>
+<H1><A NAME="ANY_ROUTINES">ANY ROUTINES</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+<PRE>    socks_error( ERROR_CODE ) 
+</PRE>
+<P>
+<PRE>     Returns the error message.
+</PRE>
+<P>
+<PRE>    Socks error codes:
+</PRE>
+<P>
+<PRE>    SOCKS_GENERAL_SOCKS_SERVER_FAILURE
+    SOCKS_CONNECTION_NOT_ALLOWED_BY_RUL
+    SOCKS_NETWORK_UNREACHABLE
+    SOCKS_HOST_UNREACHABLE
+    SOCKS_CONNECTION_REFUSED
+    SOCKS_TTL_EXPIRED
+    SOCKS_COMMAND_NOT_SUPPORTED
+    SOCKS_ADDRESS_TYPE_NOT_SUPPORTED
+    SOCKS_OKAY
+    SOCKS_FAILED
+    SOCKS_NO_IDENT
+    SOCKS_USER_MISMATCH
+    SOCKS_INCOMPLETE_AUTH
+    SOCKS_BAD_AUTH
+    SOCKS_SERVER_DENIES_AUTH_METHOD
+    SOCKS_MISSING_SOCKS_SERVER_NET_DATA
+    SOCKS_MISSING_PEER_NET_DATA
+    SOCKS_SOCKS_SERVER_UNAVAILABLE
+    SOCKS_TIMEOUT
+    SOCKS_UNSUPPORTED_PROTOCOL_VERSION
+    SOCKS_UNSUPPORTED_ADDRESS_TYPE
+    SOCKS_HOSTNAME_LOOKUP_FAILURE
+</PRE>
+<P>
+<PRE>    $self-&gt;read_chain_data();
+</PRE>
+<P>
+<PRE>     Reading the configuration file.
+</PRE>
+<P>
+<PRE>    $self-&gt;get_socks_count
+</PRE>
+<P>
+<PRE>     Returns the number of the socks servers
+</PRE>
+<P>
+<PRE>    $self-&gt;mark_proxy ( $proxy_id, $status );
+</PRE>
+<P>
+<PRE>     Mark the socks server with index $proxy_id how dead
+     if $status not equally SOCKS_OKAY, otherwise
+     clearing counter of the connection failure...
+</PRE>
+<P>
+<PRE>    $self-&gt;dump_cfg_data();
+</PRE>
+<P>
+<PRE>     Dump socks data, in the cache file.
+</PRE>
+<P>
+<PRE>    $self-&gt;restore_cfg_data();
+</PRE>
+<P>
+<PRE>     Restore socks data, from the cache file.
+</PRE>
+<P>
+<HR>
+<H1><A NAME="NOTES">NOTES</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+accept method change the follow variable, which returns of the socks_param:
+
+<P>
+<PRE> listen_addr
+ listen_port
+</PRE>
+<P>
+Methods connect, bind, accept returnings SOCKS_OKAY if it succeeded.
+
+<P>
+<HR>
+<H1><A NAME="CONFIG_FORMAT">CONFIG FORMAT</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+<PRE> #host           :   port    : uid   :   pswd    : socks_proto
+ 192.168.1.90    :   1080    :       :           :   5
+ ...
+</PRE>
+<P>
+<PRE> You can use the comments in the configuration file, for 
+ this you must write `#' in the beginning of string...
+</PRE>
+<P>
+<HR>
+<H1><A NAME="SEE_ALSO">SEE ALSO</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+perl, RFC 1928, RFC 1929, ...
+
+<P>
+<HR>
+<H1><A NAME="AUTHOR">AUTHOR</A></H1>
+<P>
+<PRE> 
+</PRE>
+<P>
+<PRE> Okunev Igor V.  <A HREF="mailto:igor@prv.mts-nn.ru">mailto:igor@prv.mts-nn.ru</A>
+                 <A HREF="http://www.mts-nn.ru/~gosha">http://www.mts-nn.ru/~gosha</A>
+</PRE>
+</BODY>
+
+</HTML>
