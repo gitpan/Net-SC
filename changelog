@@ -1,3 +1,6 @@
+1.20
+	Added HTTP proxy support
+
 1.18
 	Has corrected for work with Windows systems ( windows 2000 )
 

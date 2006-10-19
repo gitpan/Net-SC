@@ -24,6 +24,7 @@
 	<li><a href="#any_routines">ANY ROUTINES</a></li>
 	<li><a href="#notes">NOTES</a></li>
 	<li><a href="#config_format">CONFIG FORMAT</a></li>
+	<li><a href="#thanks">THANKS</a></li>
 	<li><a href="#see_also">SEE ALSO</a></li>
 	<li><a href="#author">AUTHOR</a></li>
 </ul>
@@ -34,7 +35,7 @@
 </p>
 <h1><a name="name">NAME</a></h1>
 <p></p>
-<p>Net::SC - perl module for create the chain from the SOCKS servers.</p>
+<p>Net::SC - perl module for create the chain from the SOCKS/HTTP proxies.</p>
 <p>
 </p>
 <hr />
@@ -78,6 +79,7 @@
                      Chain_File_Data =&gt; [
                                           '200.41.23.164:1080:::4:383 b/s Argentina',
                                           '24.232.88.160:1080:::4:1155 b/s Argentina',
+                                          '24.2.8.160:3128:::0:HTTP proxy',
                                         ],
                   );</pre>
 <pre>
@@ -95,7 +97,7 @@
  $self-&gt;close;
  ...</pre>
 <pre>
- #  BIND THE PORT
+ #  BIND THE PORT ( only SOCKS [4/5] proxies )
  # ---------------
  
  ...
@@ -212,6 +214,10 @@
 <pre>
  SYSLOG          - 1 - Use syslogd ( for *nix ), or eventlog
                    ( for win32 ) for debug messages. Default 0.</pre>
+</dd>
+<dd>
+<pre>
+ HTTP_CLIENT     - User-Agent name for http proxies</pre>
 </dd>
 <p></p></dl>
 <p>
@@ -397,6 +403,8 @@ Returns parameters of the last server into the chain socks...
  listen_addr
  listen_port</pre>
 <p>Methods connect, bind, accept returnings SOCKS_OKAY if it succeeded.</p>
+<p>Http proxies do not support bind method.</p>
+<p>Http proxies support only Basic auth.</p>
 <p>
 </p>
 <hr />
@@ -405,10 +413,17 @@ Returns parameters of the last server into the chain socks...
 <pre>
  #host           :   port    : uid   :   pswd    : socks_proto
  192.168.1.90    :   1080    :       :           :   5
+ 192.18.122.90   :   3128    : bbb   :  ccc      :   0
  ...</pre>
 <pre>
  You can use the comments in the configuration file, for 
  this you must write `#' in the beginning of string...</pre>
+<p>
+</p>
+<hr />
+<h1><a name="thanks">THANKS</a></h1>
+<pre>
+ JoNO &lt;jonozzz[at]yahoo.com&gt; - for ideas of a writing of support http a proxy.</pre>
 <p>
 </p>
 <hr />
@@ -421,7 +436,7 @@ Returns parameters of the last server into the chain socks...
 <h1><a name="author">AUTHOR</a></h1>
 <p></p>
 <pre>
- Okunev Igor V.  <a href="mailto:igor@prv.mts-nn.ru">mailto:igor@prv.mts-nn.ru</a>
+ Igor V. Okunev  <a href="mailto:igor@prv.mts-nn.ru">mailto:igor@prv.mts-nn.ru</a>
                  <a href="http://www.mts-nn.ru/~gosha">http://www.mts-nn.ru/~gosha</a>
                  icq:106183300</pre>
 

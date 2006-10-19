@@ -1,10 +1,10 @@
 ########################################################################
 #
-# $Id: SC.pm,v 1.18 2005/01/10 11:32:19 gosha Exp $
+# $Id: SC.pm,v 1.20 2006/10/19 19:13:35 gosha Exp $
 #
 #              Socks Chain ( TCP only )
 #
-# Copyright (C)  Okunev Igor gosha@prv.mts-nn.ru 2002-2005
+# Copyright (C)  Okunev Igor gosha@prv.mts-nn.ru 2002-2006
 #
 #      All rights reserved. This program is free software;
 #      you can redistribute it and/or modify it under the
@@ -21,10 +21,11 @@ use Symbol;
 use Config;
 use Exporter;
 use IO::Socket;
+use MIME::Base64;
 
 local $[ = 0;
 
-($VERSION='$Revision: 1.18 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
+($VERSION='$Revision: 1.20 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
 
 @ISA = qw( Exporter );
 
@@ -57,7 +58,6 @@ local $[ = 0;
 #
 # Расширенные сообщения об ошибках
 #
-
 use constant SOCKS_MSG => {
 	1	=>	'general SOCKS server failure',			# SOCKS5
 	2	=>	'connection not allowed by ruleset',
@@ -84,9 +84,8 @@ use constant SOCKS_MSG => {
 };
 
 #
-# Доступные через socks_param параметры сокс серверов....
+# Доствпные параметры конфигурации сокс серверов
 #
-
 use constant SOCKS_PARAM => {
 	addr				=> 1,
 	port				=> 2,
@@ -105,9 +104,8 @@ use constant SOCKS_PARAM => {
 };
 
 #
-# Коды возврата Socks серверов...
+#  Коды возврвта сокс серверов.
 #
-
 sub SOCKS_GENERAL_SOCKS_SERVER_FAILURE		{ 1 };
 
 sub SOCKS_CONNECTION_NOT_ALLOWED_BY_RULESET	{ 2 };
@@ -157,7 +155,6 @@ sub SOCKS_HOSTNAME_LOOKUP_FAILURE			{ 208 };
 #
 # Возвращает ссылку на созданный обьект.
 #
-
 sub new {
 	my ( $class, %conf ) = @_;
 	my $self = bless {}, $class;
@@ -181,18 +178,21 @@ sub new {
 						AUTO_SAVE		=> 0,
 						LOOP_CONNECT	=> 0x02, # 0x01 - проверка Socks 5
 											     # 0x02 - проверка Socks 4
+											     # 0x04 - проверка HTTP proxies
 						LOG_FH			=> undef,
 
 						SYSLOG			=> 0,
 
+						HTTP_CLIENT		=> 'Proxy chain client $Id: SC.pm,v 1.20 2006/10/19 19:13:35 gosha Exp $',
+
 						LOG_SOCKS_FIELD	=> [ qw( addr port user_id protocol_version ) ]
 	);
-#
-# Инициализируем значения по умолчанию, и данные переданные в качестве
-# параметров конфигурации...
-#
-# Внутри данные хранятся с префиксами CFG_
-#
+	#
+	# Инициализируем значения по умолчанию, и данные переданные в качестве
+	# параметров конфигурации...
+	#
+	# Внутри данные хранятся с префиксами CFG_
+	#
 	foreach $key ( keys %conf ) {
 		$_ = uc($key);
 		if ( exists $def_conf{$_} ) {
@@ -204,21 +204,21 @@ sub new {
 			$self->{"CFG_$key"} = $def_conf{$key};
 		}
 	}
-#
-# Готовим место для данных из файла конфигурации
-#
+	#
+	# Готовим место для данных из файла конфигурации
+	#
 	undef $self->{CFG_CHAIN_DATA};
 
 	unless ( defined $self->configure( 'TIMEOUT' ) ) {
 		$self->configure( TIMEOUT => 0 );
 	}
-#
-# Если установлена переменная SYSLOG то лог пишется через:
-# *nix - syslogd,
-# win32 - eventlog,
-# иначе если возможно открываем LOG файл, так же можно напрямую передать
-# дескриптор файла  в LOG_FH, но тогда надо чтоб LOG_FILE был undef...
-#
+	#
+	# Если установлена переменная SYSLOG то лог пишется через:
+	# *nix - syslogd,
+	# win32 - eventlog,
+	# иначе если возможно открываем LOG файл, так же можно напрямую передать
+	# дескриптор файла  в LOG_FH, но тогда надо чтоб LOG_FILE был undef...
+	#
 	if ( $self->configure( 'SYSLOG' ) ) {
 		if ( $^O =~ /[Ww]in32/ ) {
 			require Win32::EventLog;
@@ -270,7 +270,6 @@ sub new {
 # Если задан один аргумент то возвращает переменную с
 # именем `первый аргумент'...
 #
-
 sub configure {
 	my ( $self, $section, $var ) = @_;
 	local $_;
@@ -279,9 +278,9 @@ sub configure {
 		$self->log_error("Use unknown configuration variable : `$section'");
 		return undef;
 	} elsif ( uc($section) eq 'CHAIN_DATA' and (caller)[0] ne __PACKAGE__ ) {
-#
-# Маленькая кучка соломки, от изменения данных конфигурационного файла...
-#
+		#
+		# Маленькая кучка соломки, от изменения данных конфигурационного файла...
+		#
 		return $self->{ 'CFG_' . uc($section) };
 	} else {
 		if ( scalar @_ > 2 ) {
@@ -299,7 +298,6 @@ sub configure {
 #
 # Возвращает SOCKS_OK если все OK
 #
-
 sub connect {
 	my ( $self, $peer_host, $peer_port ) = @_;
 	my $rc;
@@ -331,7 +329,6 @@ sub connect {
 #
 # Возвращает SOCKS_OK если все OK
 #
-
 sub bind {
 	my ( $self, $peer_host, $peer_port ) = @_;
 	my $rc;
@@ -359,7 +356,6 @@ sub bind {
 # Ждет соединение удаленной машины, через цепочку
 # Socks серверов.
 #
-
 sub accept {
 	my $self = shift;
 	local $_;
@@ -376,7 +372,6 @@ sub accept {
 #
 # Возвращает сокет цепочки socks'ов
 #
-
 sub sh {
 	my $self = shift;
 
@@ -386,7 +381,6 @@ sub sh {
 #
 # Закрывает соединение через socks цепь.
 #
-
 sub close {
 	my $self = shift;
 
@@ -410,7 +404,6 @@ sub close {
 # При установленном $value параметр param устанавливается в
 # данное значение.
 #
-
 sub socks_param {
 	my ( $self, $param, $value, $id ) = @_;
 	local $_;
@@ -438,7 +431,6 @@ sub socks_param {
 # Выводит текстовое сообщение в соответствующее коду возврата
 # socks сервера.
 #
-
 sub socks_error {
 	if ( defined $_[0] ) {
 		return SOCKS_MSG->{$_[0]} || $_[0];
@@ -459,8 +451,8 @@ sub socks_error {
 #   0  addr				- имя socks сервера
 #   1  port				- порт socks сервера
 #   2  user_id			- пользователь socks
-#   3  user_pswd			- пароль пользователя socks
-#   4  protocol_version	- протокол socks сервера ( 4 или 5 )
+#   3  user_pswd		- пароль пользователя socks
+#   4  protocol_version	- протокол socks сервера ( 4 или 5 или 0 (для http) )
 #   5  last_check_time	- время последней проверки сервера ( unixtime )
 #   6  attempt_cnt		- количество неудачных проверок ( 1 - все ок )
 #
@@ -470,7 +462,6 @@ sub socks_error {
 # файла ( new( CHAIN_FILE_DATA => [ 'str1', .., 'strN' ] ) )
 # где strX - строка в формате описанном выше...
 #
-
 sub read_chain_data {
 	my $self = shift;
 	local $_;
@@ -519,7 +510,7 @@ sub read_chain_data {
 		}
 		unless (	defined $socks_proto and
 					length( $socks_proto ) and
-					( $socks_proto == 4 or $socks_proto == 5 ) ) {
+					( $socks_proto == 4 or $socks_proto == 5 or $socks_proto == 0 ) ) {
 
 			$socks_proto = 5;
 		}
@@ -552,7 +543,6 @@ sub read_chain_data {
 # временем пользования, т.е. не `отдыхающих' по таймауту
 # в связи с недоступностью
 #
-
 sub get_socks_count {
 	my $self = shift;
 	local $_;
@@ -573,7 +563,6 @@ sub get_socks_count {
 #
 # Если все нормально возвращает SOCKS_OKAY
 #
-
 sub mark_proxy {
 	my ( $self, $id, $status ) = @_;
 	local $_;
@@ -592,7 +581,7 @@ sub mark_proxy {
 		$self->socks_param( 'attempt_cnt', 0, $id );
 	} else {
 		$self->socks_param( 'last_check_time', time, $id );
-		$self->socks_param( 'attempt_cnt', $self->socks_param( 'attempt_cnt' ) + 1, $id );
+		$self->socks_param( 'attempt_cnt', ( $self->socks_param( 'attempt_cnt' ) || 0 ) + 1, $id );
 	}
 
 	return SOCKS_OKAY;
@@ -605,7 +594,6 @@ sub mark_proxy {
 #
 # Если все нормально возвращает SOCKS_OKAY
 #
-
 sub dump_cfg_data {
 	my $self = shift;
 	my ( $sym, %hash, $id, $key );
@@ -620,9 +608,9 @@ sub dump_cfg_data {
 		return SOCKS_FAILED;
 	}
 	$sym = gensym;
-#
-# В качестве лок файла - используем текстовы конфигурационный файл
-#
+	#
+	# В качестве лок файла - используем текстовы конфигурационный файл
+	#
 	unless ( open( $sym, '<'. $self->configure( 'CHAIN_FILE' ) ) ) {
 		$self->log_error("Can't open file " . $self->configure( 'CHAIN_FILE' ) . " : $!");
 		dbmclose %hash;
@@ -656,7 +644,6 @@ sub dump_cfg_data {
 #
 # Если все в порядке возвращает SOCKS_OKAY
 #
-
 sub restore_cfg_data {
 	my $self = shift;
 	my ( $sym, %hash, %hash2, $id, $key );
@@ -670,18 +657,18 @@ sub restore_cfg_data {
 		$self->log_error("Can't open damp hash : $!");
 		return SOCKS_FAILED;
 	}
-#
-# Пустой файл ( только что созданный )
-#
+	#
+	# Пустой файл ( только что созданный )
+	#
 	if ( scalar keys %hash == 0 ) {
 		dbmclose %hash;
 		return SOCKS_OKAY;
 	}
 
 	$sym = gensym;
-#
-# В качестве лок файла - используем текстовы конфигурационный файл
-#
+	#
+	# В качестве лок файла - используем текстовы конфигурационный файл
+	#
 	unless ( open( $sym, '<'. $self->configure( 'CHAIN_FILE' ) ) ) {
 		$self->log_error("Can't open file " . $self->configure( 'CHAIN_FILE' ) . " : $!");
 		dbmclose %hash;
@@ -689,9 +676,9 @@ sub restore_cfg_data {
 	}
 	my_flock ( $sym, LOCK_SH );
 
-#
-# Создаем ключи и соответствующие им индексы
-#
+	#
+	# Создаем ключи и соответствующие им индексы
+	#
 	foreach $id ( 0 .. $#{$self->configure( 'CHAIN_DATA' )} ) {
 		$key = join( "\x00",	$self->configure( 'CHAIN_DATA' )->[$id]->{addr},
 								$self->configure( 'CHAIN_DATA' )->[$id]->{port},
@@ -699,14 +686,15 @@ sub restore_cfg_data {
 								$self->configure( 'CHAIN_DATA' )->[$id]->{user_pswd} || '',
 								$self->configure( 'CHAIN_DATA' )->[$id]->{protocol_version}
 					);
-#
-# Может быть несколько одинаковых серверов в конфиге...
-#
+		#
+		# Может быть несколько одинаковых серверов в конфиге...
+		#
 		push @{$hash2{ $key }}, $id;
 	}
-#
-# Восстанавливаем значения из кэша
-#
+
+	#
+	# Восстанавливаем значения из кэша
+	#
 	foreach $key ( keys %hash ) {
 		if ( not exists $hash2{$key} and $self->configure( 'RESTORE_TYPE' ) == 1 ) {
 			delete $hash{$key};
@@ -732,7 +720,6 @@ sub restore_cfg_data {
 #
 # Возвращает проверенный массив элементов
 #
-
 sub dump_cfg_filter {
 	my $self = shift;
 	my ( $key, $val, @param );
@@ -763,10 +750,9 @@ sub dump_cfg_filter {
 #
 # Если все Ok то возвращает SOCKS_OKAY
 #
-
 sub create_chain {
 	my ( $self, $peer_host, $peer_port, $type ) = @_;
-	my ( $id, $host_ind, $rc, $prev_proto );
+	my ( $host_ind, $rc );
 	my ( @hosts_id );
 	local $_;
 
@@ -782,112 +768,140 @@ sub create_chain {
 		$self->log_error('Length of chain very small...');
 		return SOCKS_FAILED;
 	} elsif ( $self->configure( 'RANDOM_CHAIN' ) > 0 ) {
-#
-# Случайный выбор соксов из конфига
-#
+		#
+		# Random select proxies
+		#
   	    @hosts_id = ( grep {
 							$self->socks_param( 'last_check_time', undef, $_ ) + ( $self->configure( 'CHECK_DELAY' ) * $self->socks_param( 'attempt_cnt', undef, $_ ) ) < time
 						} ( sort { rand(10) <=> rand(10) } ( 0 .. $#{$self->configure( 'CHAIN_DATA' )} ) ) );
 	} else {
-#
-# Выбор в порядке перечисления в файле конфигурации
-#
+		#
+		# Select proxies in order definition
+		#
   	    @hosts_id = ( grep {
 							$self->socks_param( 'last_check_time', undef, $_ ) + ( $self->configure( 'CHECK_DELAY' ) * $self->socks_param( 'attempt_cnt', undef, $_ ) ) < time
 						} ( 0 .. $#{$self->configure( 'CHAIN_DATA' )} ) );
 	}
 
-	$self->{__peer_addr} = $peer_host;
-	$self->{__peer_port} = $peer_port;
-
 	CHAIN:{
 		if ( defined $self->sh ) {
 			$self->close;
 		}
+
 		if ( scalar @hosts_id < $self->configure( 'CHAIN_LEN' ) ) {
 			$self->log_error("Can't create socks chain, many servers not response...");
 			return SOCKS_FAILED;
 		}
-		$host_ind	= 0;
-		$prev_proto	= $self->socks_param( 'protocol_version', undef, $hosts_id[0] );
-		foreach $id ( @hosts_id ) {
-			if ( $self->configure( 'DEBUG' ) & 0x01 ) {
-				$self->debug( 'Connect to socks: ' . $self->log_str( $id ) );
-			}
-#
-# Индекс последнего socks сервера в цепи...
-#
-			$self->{__last_socks} = $id;
 
-			if ( $prev_proto == 5 ) {
-				$rc = $self->request5( 1, 1 );
+		#
+		# Connect to first socks/HTTP proxy
+		#
+		$self->{__last_socks} = $hosts_id[0];
+		unless ( $self->first_connect == SOCKS_OKAY ) {
+			shift @hosts_id;
+			redo CHAIN;
+		}
+
+		for ( $host_ind = 0; $host_ind <= $#hosts_id; $host_ind++ ) {
+			#
+			# Last proxy identifier...
+			#
+			$self->{__last_socks} = $hosts_id[$host_ind];
+
+			last if $host_ind >= $self->configure( 'CHAIN_LEN' ) - 1;
+
+			#
+			# Check proxies for connection ( create loop connection )
+			#
+			if ( $self->socks_param( 'protocol_version' ) == 5 and $self->configure( 'LOOP_CONNECT' ) & 0x01 ) {
+				$rc = $self->request_socks5( 1,
+						$self->socks_param('addr',undef,$hosts_id[$host_ind]),
+						$self->socks_param('port',undef,$hosts_id[$host_ind]));
+			} elsif ( $self->socks_param( 'protocol_version' ) == 0 and $self->configure( 'LOOP_CONNECT' ) & 0x04 ) {
+				$rc = $self->request_http( 1,
+						$self->socks_param('addr',undef,$hosts_id[$host_ind]),
+						$self->socks_param('port',undef,$hosts_id[$host_ind]));
+			} elsif ( $self->socks_param( 'protocol_version' ) == 4 and $self->configure( 'LOOP_CONNECT' ) & 0x02 ) {
+				$rc = $self->request_socks4( 1,
+						$self->socks_param('addr',undef,$hosts_id[$host_ind]),
+						$self->socks_param('port',undef,$hosts_id[$host_ind]));
 			} else {
-#
-# Для 4 сокса user_id берется от предыдущего сервера и записывается в
-# prev_user_id текущего...
-#
-				$self->socks_param( 'prev_user_id',
-					$self->socks_param( 'user_id', undef, $hosts_id[($host_ind||1)-1] ),
-					$id );
-				$rc = $self->request4( 1, 1 );
+				$rc = SOCKS_OKAY;
 			}
 
-			if ( $rc == SOCKS_OKAY ) {
-				if ( $self->socks_param( 'protocol_version' ) == 5 ) {
-					if ( $self->configure( 'LOOP_CONNECT' ) & 0x01 ) {
-						$rc = $self->request5( 1, 1 );
-					}
-				} else {
-					if ( $self->configure( 'LOOP_CONNECT' ) & 0x02 ) {
-						$self->socks_param( 'prev_user_id', $self->socks_param( 'user_id', undef, $id ), $id );
-						$rc = $self->request4( 1, 1 );
-					}
-				}
-			}
+			#
+			# LoopCheck failed
+			#
+			unless ( $rc == SOCKS_OKAY ) {
+				$self->mark_proxy( $self->{__last_socks}, $rc );
 
-			$self->mark_proxy( $id, $rc );
-			$host_ind++;
-			if ( $rc == SOCKS_OKAY ) {
-				$prev_proto	= $self->socks_param( 'protocol_version', undef, $id );
-				last if $host_ind >= $self->configure( 'CHAIN_LEN' );
-			} else {
 				if ( $self->configure( 'DEBUG' ) & 0x01 ) {
-					$self->debug( "Socks error[$rc]: " . $self->log_str( $hosts_id[$host_ind-1] ) );
+					$self->debug( "Socks error[$rc]: " . $self->log_str( $self->{ __last_socks }) );
 				}
 				if ( $self->configure( 'DEBUG' ) & 0x08 ) {
 					$self->debug( '            [ ' . ( socks_error($rc) ) . ' ]' );
 				}
-				splice( @hosts_id, $host_ind-1, 1);
+				splice( @hosts_id, $host_ind, 1);
+
+				redo CHAIN;
+			}
+
+			#
+			# Create connection to next proxy server
+			#
+			if ( $self->socks_param( 'protocol_version' ) == 5 ) {
+				$rc = $self->request_socks5( 1,
+							$self->socks_param('addr',undef,$hosts_id[$host_ind+1]),
+							$self->socks_param('port',undef,$hosts_id[$host_ind+1]));
+			} elsif ( $self->socks_param( 'protocol_version' ) == 0 ) {
+				$rc = $self->request_http( 1,
+							$self->socks_param('addr',undef,$hosts_id[$host_ind+1]),
+							$self->socks_param('port',undef,$hosts_id[$host_ind+1]));
+			} else {
+				$rc = $self->request_socks4( 1,
+							$self->socks_param('addr',undef,$hosts_id[$host_ind+1]),
+							$self->socks_param('port',undef,$hosts_id[$host_ind+1]));
+			}
+
+			$self->mark_proxy( $self->{__last_socks}, $rc );
+
+			unless ( $rc == SOCKS_OKAY ) {
+				if ( $self->configure( 'DEBUG' ) & 0x01 ) {
+					$self->debug( "Socks error[$rc]: " . $self->log_str( $hosts_id[$host_ind+1] ) );
+				}
+				if ( $self->configure( 'DEBUG' ) & 0x08 ) {
+					$self->debug( '            [ ' . ( socks_error($rc) ) . ' ]' );
+				}
+				splice( @hosts_id, $host_ind+1, 1);
 				redo CHAIN;
 			}
 		}
 	}
 
-	if ( $host_ind < $self->configure( 'CHAIN_LEN' ) or not defined $self->sh ) {
+	if ( $host_ind < $self->configure( 'CHAIN_LEN' ) - 1 ) {
 		$self->log_error("Can't create socks chain, many servers not response...");
 		return SOCKS_FAILED;
-	} else {
-		if ( $prev_proto == 5 ) {
-			$rc = $self->request5( $type, 0 );
-		} else {
-			$rc = $self->request4( $type, 0 );
-		}
-		unless ( $rc == SOCKS_OKAY ) {
-			if ( $self->configure( 'DEBUG' ) & 0x01 ) {
-				$self->debug( "Socks error[$rc]: " . $self->log_str( $hosts_id[$host_ind-1] ) );
-			}
-			if ( $self->configure( 'DEBUG' ) & 0x08 ) {
-				$self->debug( '            [ ' . ( socks_error($rc) ) . ' ]' );
-			}
-		}
-		return $rc;
 	}
+
+	#
+	# Create connectino to destination addr/port
+	#
+	if ( $self->socks_param( 'protocol_version' ) == 5 ) {
+		$rc = $self->request_socks5( $type, $peer_host, $peer_port );
+	} elsif ( $self->socks_param( 'protocol_version' ) == 0 ) {
+		$rc = $self->request_http( $type, $peer_host, $peer_port  );
+	} else {
+		$rc = $self->request_socks4( $type, $peer_host, $peer_port  );
+	}
+
+	$self->mark_proxy( $self->{__last_socks}, $rc );
+
+	return $rc;
 }
 
 #
 # Процедура блокировки файлов, с учетом проверки на возможности системы...
 #
-
 sub my_flock {
 	my ( $fh, $mode ) = @_;
 
@@ -900,22 +914,21 @@ sub my_flock {
 # Используется для отладки - при использовании SYSLOG'а сообщения пишутся
 # в `debug', если syslog не пользуется то вызывается log_error...
 #
-
 sub debug {
 	my $self = shift;
 
-#
-# syslogd
-#
+	#
+	# syslogd
+	#
 	if ( ref $self and $self->configure( 'SYSLOG' ) and $^O !~ /[Ww]in32/ ) {
 		foreach ( @_ ) {
 			syslog( 'debug', '%s [ %d ]', $_, (caller)[-1] ) unless /^\s*$/;
 		}
-		return 1; 
+		return 1;
 	}
-#
-# Все остальное
-#
+	#
+	# Все остальное
+	#
 	return log_error( $self, @_);
 }
 
@@ -929,19 +942,19 @@ sub log_error {
 	my $sym;
 	local $_;
 
-#
-# syslogd
-#
 	if ( ref $self and $self->configure( 'SYSLOG' ) and $^O !~ /[Ww]in32/ ) {
+		#
+		# syslogd
+		#
 		foreach ( @_ ) {
 			syslog( 'warning', '%s [ %d ]', $_, (caller)[-1] ) unless /^\s*$/;
 		}
 	} elsif (	ref $self and
 				$self->configure( 'SYSLOG' ) and
 				defined $self->configure( 'LOG_FH' ) ) {
-#
-# eventlog
-#
+		#
+		# eventlog
+		#
 		$self->configure('LOG_FH')->Report( {
 				Category	=> 20,
 				EventType	=> Win32::EventLog::EVENTLOG_INFORMATION_TYPE(),
@@ -950,6 +963,9 @@ sub log_error {
 				EventID		=> 0
 		} );
 	} else {
+		#
+		# write co STDERR
+		#
 		unless ( ref $self ) {
 			unshift @_, $self;
 			$sym = \*STDERR;
@@ -969,7 +985,6 @@ sub log_error {
 #
 # Возвращает лог строку о соединении id...
 #
-
 sub log_str {
 	my ( $self, $id ) = @_;
 	my $str;
@@ -978,7 +993,11 @@ sub log_str {
 	$str = '';
 
 	foreach ( @{$self->configure('LOG_SOCKS_FIELD')} ) {
-		$str .= ' : ' . ( $self->socks_param( $_, undef, $id ) || '' );
+		if ( defined $self->socks_param( $_, undef, $id ) ) {
+			$str .= ' : ' . $self->socks_param( $_, undef, $id );
+		} else {
+			$str .= ' : ';
+		}
 	}
 
 	return substr $str, 3;
@@ -989,17 +1008,16 @@ sub log_str {
 #
 # Если все Ok возвращает SOCKS_OKAY
 #
-
 sub first_connect {
 	my $self = shift;
 	local $_;
 
 	$self->{sock_h} = new IO::Socket::INET (
-				PeerAddr	=> $self->socks_param( 'addr' ),
-				PeerPort	=> $self->socks_param( 'port' ),
-				Timeout		=> $self->configure( 'TimeOut' ),
-				Proto		=> 'tcp'
-	);
+			PeerAddr	=> $self->socks_param( 'addr' ),
+			PeerPort	=> $self->socks_param( 'port' ),
+			Timeout		=> $self->configure( 'TimeOut' ),
+			Proto		=> 'tcp'
+		);
 
 	unless ( defined $self->sh ) {
 		$self->log_error( $@, "Can't create network socket... : $!" );
@@ -1007,7 +1025,7 @@ sub first_connect {
 	}
 
 	binmode $self->sh;
-	
+
 	$self->sh->autoflush(1);
 
 	return SOCKS_OKAY;
@@ -1022,7 +1040,6 @@ sub first_connect {
 # Возвращает  0 - при таймауте
 #            -1 - при чтении 0 байт
 #             1 - все Ok
-
 sub read_data {
 	my ( $self, $fh1, $fh2, $cnt ) = @_;
 	my ( $char, $rc, $rin );
@@ -1039,7 +1056,17 @@ sub read_data {
 		local $SIG{PIPE}	= sub { die "Pipe error\n" };
 		if ( ref $fh2 eq 'SCALAR' ) {
 			$$fh2 = '';
-			while ( $cnt-- && $_ ) {
+
+			#
+			# HTTP proxies support
+			#
+			my $is_http_proxy = 0;
+			$is_http_proxy = 1 if $self->socks_param('protocol_version') == 0;
+
+			#
+			# \r\n\r\n - for http proxies support
+			#
+			while( $_ && ($is_http_proxy ? $$fh2 !~ /\r\n\r\n$/ : $cnt-- ) ) {
 				unless ( select( $rin, undef, undef, $self->configure( 'TimeOut' ) ) ) {
 					die "Read data - timeout\n";
 				}
@@ -1080,7 +1107,7 @@ sub read_data {
 #
 # Возвращает 1 - все Ok
 #            0 - какие то проблемы...
-
+#
 sub print_data {
 	my ( $self, $fh, @data ) = @_;
 	my $rc;
@@ -1111,44 +1138,26 @@ sub print_data {
 #     1 - connect
 #     2 - bind
 #
-# type - тип - 1 - промежуточный запрос
-#              0 - конечный запрос цепи
-#
 # Если все OK то возвращает SOCKS_OKAY
 #
-
-sub request4 {
-	my ( $self, $req_num, $type ) = @_;
-	my ( $rc );
+sub request_socks4 {
+	my ( $self, $req_num, $peer_host, $peer_port ) = @_;
 	local $_;
 
-	unless ( defined $self->sh ) {
-		return $self->first_connect;
-	} else {
-		unless ( $type ) {
-			$self->print_data( $self->sh,
-					pack ( 'CCn', 4, $req_num, $self->{__peer_port} ),
-					inet_aton( $self->{__peer_addr} ),
-					$self->socks_param( 'user_id' ),
-					pack 'x' );
-
-			return $self->get_resp4;
-		} else {
-			$self->print_data( $self->sh,
-					pack ( 'CCn', 4, $req_num, $self->socks_param( 'port' ) ),
-					inet_aton( $self->socks_param( 'addr' ) ),
-					$self->socks_param( 'prev_user_id' ),
-					pack 'x' );
-
-			unless ( ( $rc = $self->get_resp4 ) == SOCKS_OKAY ) {
-				return $rc;
-			} elsif ( $self->socks_param( 'protocol_version' ) == 5 ) {
-				return $self->socks5_auth;
-			} else {
-				return SOCKS_OKAY;
-			}
-		}
+	#
+	# Print debug message
+	#
+	if ( $self->configure( 'DEBUG' ) & 0x01 ) {
+		$self->debug( 'Connect over socks4: ' . $self->log_str( $self->{__last_socks}) . ", to $peer_host:$peer_port" );
 	}
+
+	$self->print_data( $self->sh,
+			pack ( 'CCn', 4, $req_num, $peer_port ),
+			inet_aton( $peer_host ),
+			$self->socks_param( 'user_id' ),
+			pack 'x' );
+
+	return $self->get_resp_socks4;
 }
 
 #
@@ -1158,55 +1167,95 @@ sub request4 {
 #     1 - connect
 #     2 - bind
 #
-# type - тип - 1 - промежуточный запрос
-#              0 - конечный запрос цепи
+# Если все OK то возвращает SOCKS_OKAY
+#
+sub request_socks5 {
+	my ( $self, $req_num, $peer_host, $peer_port ) = @_;
+	local $_;
+
+	#
+	# Print debug message
+	#
+	if ( $self->configure( 'DEBUG' ) & 0x01 ) {
+		$self->debug( 'Connect over socks5: ' . $self->log_str( $self->{__last_socks}) . ", to $peer_host:$peer_port" );
+	}
+
+	#
+	# Check socks5 auth
+	#
+	unless ( ( my $rc = $self->socks5_auth ) == SOCKS_OKAY ) {
+		$self->close;
+		return $rc;
+	}
+
+	my $addr_type;
+
+	if ( $peer_host =~ /[a-z][A-Z]/) {	# FQDN?
+		$addr_type = 3;
+		$peer_host = length( $peer_host ) . $peer_host;
+	} else {									# nope.  Must be dotted-dec.
+		$addr_type = 1;
+		$peer_host = inet_aton( $peer_host );
+	}
+
+	$self->print_data( $self->sh,
+			pack ( 'CCCC', 5, $req_num, 0, $addr_type ),
+			$peer_host,
+			pack( 'n', $peer_port ) );
+
+	return $self->get_resp_socks5;
+}
+
+#
+# Request to HTTP proxies
+#
+# req_num - тип запроса к socks серверу:
+#     1 - connect
 #
 # Если все OK то возвращает SOCKS_OKAY
 #
-
-sub request5 {
-	my ( $self, $req_num, $type ) = @_;
-	my ( $rc, $addr_type, $peer_port, $peer_addr );
+sub request_http {
+	my ( $self, $req_num, $peer_host, $peer_port ) = @_;
 	local $_;
 
-	unless ( defined $self->sh ) {
-		unless ( ( $rc = $self->first_connect ) == SOCKS_OKAY ) {
-			return $rc;
-		}
-		unless ( ( $rc = $self->socks5_auth ) == SOCKS_OKAY ) {
-			$self->close;
-		}
-		return $rc;
-	} else {
-		unless ( $type ) {
-			$peer_addr = $self->{__peer_addr};
-			$peer_port = $self->{__peer_port};
-		} else {
-			$peer_addr = $self->socks_param( 'addr' );
-			$peer_port = $self->socks_param( 'port' );
-		}
-
-		if ( $peer_addr =~ /[a-z][A-Z]/) {	# FQDN?
-			$addr_type = 3;
-			$peer_addr = length( $peer_addr ) . $peer_addr;
-		} else {									# nope.  Must be dotted-dec.
-			$addr_type = 1;
-			$peer_addr = inet_aton( $peer_addr );
-		}
-
-		$self->print_data( $self->sh,
-					pack ( 'CCCC', 5, $req_num, 0, $addr_type ),
-					$peer_addr,
-					pack( 'n', $peer_port ) );
-
-		unless ( ( $rc = $self->get_resp5 ) == SOCKS_OKAY ) {
-			return $rc;
-		} elsif ( $type and $self->socks_param( 'protocol_version' ) == 5 ) {
-			return $self->socks5_auth;
-		} else {
-			return SOCKS_OKAY;
-		}
+	#
+	# Print debug message
+	#
+	if ( $self->configure( 'DEBUG' ) & 0x01 ) {
+		$self->debug( 'Connect over http: ' . $self->log_str( $self->{__last_socks}) . ", to $peer_host:$peer_port" );
 	}
+
+	#
+	# bind command not support in http proxies...
+	#
+	if ( $req_num == 2 ) {
+		return SOCKS_COMMAND_NOT_SUPPORTED;
+	}
+
+	my $CRLF = "\015\012";
+
+	my @headers = (	"CONNECT $peer_host:$peer_port HTTP/1.1",
+					'User-Agent: ' . $self->configure( 'Http_Client' ),
+					'Proxy-Connection: keep-alive' );
+
+	#
+	# Basic authorization
+	#
+	if (	length ( $self->socks_param( 'user_id' ) ) > 0 and
+			length ( $self->socks_param( 'user_pswd' ) ) > 0 ) {
+
+			push @headers,	'Proxy-Authorization: ' .
+							'Basic ' .
+							MIME::Base64::encode(
+								$self->socks_param( 'user_id' )
+									. ':' .
+								$self->socks_param( 'user_pswd' ), ''
+							);
+	}
+
+	$self->print_data( $self->sh, join( $CRLF, @headers, '', '' ) );
+
+	return $self->get_resp_http;
 }
 
 #
@@ -1214,7 +1263,6 @@ sub request5 {
 #
 # Если все OK то возвращает SOCKS_OKAY
 #
-
 sub socks5_auth {
 	my ( $self ) = @_;
 	my ( $status, $method, $received, $ver );
@@ -1229,8 +1277,8 @@ sub socks5_auth {
 	}
 
 	$self->print_data( $self->sh,
-				pack ('CC', 5, length($method) ),
-				$method );
+			pack ('CC', 5, length($method) ),
+			$method );
 
 	$received = '';
 
@@ -1246,16 +1294,16 @@ sub socks5_auth {
 		return SOCKS_SERVER_DENIES_AUTH_METHOD
 	}
 	if ( $method == 2 and (
-			length ( $self->socks_param( 'user_id' ) ) == 0 or
-			length ( $self->socks_param( 'user_pswd' ) ) == 0 ) ) {
+				length ( $self->socks_param( 'user_id' ) ) == 0 or
+				length ( $self->socks_param( 'user_pswd' ) ) == 0 ) ) {
 
 		return SOCKS_INCOMPLETE_AUTH;
 	} elsif ( $method == 2 ) {
 		$self->print_data( $self->sh,
-			pack ('CC', 1, length( $self->socks_param( 'user_id' ) ) ),
-			$self->socks_param( 'user_id' ),
-			pack ('C', length( $self->socks_param( 'user_pswd' ) )),
-			$self->socks_param( 'user_pswd' ) );
+				pack ('CC', 1, length( $self->socks_param( 'user_id' ) ) ),
+				$self->socks_param( 'user_id' ),
+				pack ('C', length( $self->socks_param( 'user_pswd' ) )),
+				$self->socks_param( 'user_pswd' ) );
 
 		if ( ! $self->read_data($self->sh, \$received, 2) or length($received) < 2 ) {
 			return SOCKS_TIMEOUT;
@@ -1275,8 +1323,7 @@ sub socks5_auth {
 #
 # Если все OK то возвращает SOCKS_OKAY
 #
-
-sub get_resp4 {
+sub get_resp_socks4 {
 	my ( $self ) = @_;
 	my $received;
 	local $_;
@@ -1301,8 +1348,7 @@ sub get_resp4 {
 #
 # Если все OK то возвращает SOCKS_OKAY
 #
-
-sub get_resp5 {
+sub get_resp_socks5 {
 	my ( $self ) = @_;
 	my ( $received, $length );
 	local $_;
@@ -1313,10 +1359,10 @@ sub get_resp5 {
 		return SOCKS_TIMEOUT;
 	}
 	(
-		$self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{vn},
-		$self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{cd},
-		$self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{socks_flag},
-		$self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{addr_type}
+	 $self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{vn},
+	 $self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{cd},
+	 $self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{socks_flag},
+	 $self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ]->{addr_type}
 	) = unpack('CCCC', $received);
 
 	if ( $self->socks_param( 'addr_type' ) == 3 ) {				# FQDN
@@ -1354,6 +1400,33 @@ sub get_resp5 {
 }
 
 #
+# Ответ http прокси
+#
+# Если все OK то возвращает SOCKS_OKAY
+#
+sub get_resp_http {
+	my ( $self ) = @_;
+	local $_;
+
+	my $received = '';
+
+	if ( ! $self->read_data($self->sh, \$received, 0) or length($received) < 5 ) {
+		return SOCKS_TIMEOUT;
+	}
+
+	$self->configure( 'CHAIN_DATA' )->[ $self->{__last_socks} ] = {};
+
+	if ( $received =~ /HTTP\/\d+\.\d+\s+200/is ) {
+		return SOCKS_OKAY;
+	} elsif ( $received =~ /HTTP\/\d+\.\d+\s+(\d+)\s+([^\r\n]+)/is ) {
+		SOCKS_MSG->{"-$1"} = $2;
+		return "-$1";
+	}
+
+	return SOCKS_FAILED;
+}
+
+#
 # так..., почистим за собой...
 #
 sub DESTROY	{};
@@ -1361,11 +1434,12 @@ sub DESTROY	{};
 1;
 
 __END__
+
 =head1 NAME
 
  
 
-Net::SC - perl module for create the chain from the SOCKS servers.
+Net::SC - perl module for create the chain from the SOCKS/HTTP proxies.
 
 =head1 SYNOPSIS
 
@@ -1408,6 +1482,7 @@ Net::SC - perl module for create the chain from the SOCKS servers.
                      Chain_File_Data => [
                                           '200.41.23.164:1080:::4:383 b/s Argentina',
                                           '24.232.88.160:1080:::4:1155 b/s Argentina',
+                                          '24.2.8.160:3128:::0:HTTP proxy',
                                         ],
                   );
 
@@ -1425,7 +1500,7 @@ Net::SC - perl module for create the chain from the SOCKS servers.
  $self->close;
  ...
 
- #  BIND THE PORT
+ #  BIND THE PORT ( only SOCKS [4/5] proxies )
  # ---------------
  
  ...
@@ -1522,6 +1597,9 @@ For more information see examples: telnet_over_socks_chain.pl and accept_over_so
 
  SYSLOG          - 1 - Use syslogd ( for *nix ), or eventlog
                    ( for win32 ) for debug messages. Default 0.
+
+ HTTP_CLIENT     - User-Agent name for http proxies
+
 
 =back
 
@@ -1667,6 +1745,10 @@ accept method change the follow variable, which returns of the socks_param:
 
 Methods connect, bind, accept returnings SOCKS_OKAY if it succeeded.
 
+Http proxies do not support bind method.
+
+Http proxies support only Basic auth.
+
 
 =head1 CONFIG FORMAT
 
@@ -1674,10 +1756,16 @@ Methods connect, bind, accept returnings SOCKS_OKAY if it succeeded.
 
  #host           :   port    : uid   :   pswd    : socks_proto
  192.168.1.90    :   1080    :       :           :   5
+ 192.18.122.90   :   3128    : bbb   :  ccc      :   0
  ...
 
  You can use the comments in the configuration file, for 
  this you must write `#' in the beginning of string...
+
+
+=head1 THANKS
+
+ JoNO <jonozzz[at]yahoo.com> - for ideas of a writing of support http a proxy.
 
 
 =head1 SEE ALSO
@@ -1690,7 +1778,7 @@ perl, RFC 1928, RFC 1929, ...
 
  
 
- Okunev Igor V.  mailto:igor@prv.mts-nn.ru
+ Igor V. Okunev  mailto:igor@prv.mts-nn.ru
                  http://www.mts-nn.ru/~gosha
                  icq:106183300
 
