@@ -1,6 +1,6 @@
-########################################################################
+c#######################################################################
 #
-# $Id: SC.pm,v 1.20 2006/10/19 19:13:35 gosha Exp $
+# $Id: SC.pm,v 1.21 2009-11-14 10:18:40 gosha Exp $
 #
 #              Socks Chain ( TCP only )
 #
@@ -25,7 +25,7 @@ use MIME::Base64;
 
 local $[ = 0;
 
-($VERSION='$Revision: 1.20 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
+($VERSION='$Revision: 1.21 $')=~s/^\S+\s+(\S+)\s+.*/$1/;
 
 @ISA = qw( Exporter );
 
@@ -183,7 +183,7 @@ sub new {
 
 						SYSLOG			=> 0,
 
-						HTTP_CLIENT		=> 'Proxy chain client $Id: SC.pm,v 1.20 2006/10/19 19:13:35 gosha Exp $',
+						HTTP_CLIENT		=> 'Proxy chain client $Id: SC.pm,v 1.21 2009-11-14 10:18:40 gosha Exp $',
 
 						LOG_SOCKS_FIELD	=> [ qw( addr port user_id protocol_version ) ]
 	);
@@ -1190,9 +1190,9 @@ sub request_socks5 {
 
 	my $addr_type;
 
-	if ( $peer_host =~ /[a-z][A-Z]/) {	# FQDN?
+	if ( $peer_host =~ /[a-zA-Z]/) {	# FQDN?
 		$addr_type = 3;
-		$peer_host = length( $peer_host ) . $peer_host;
+		$peer_host = pack('C',length( $peer_host )) . $peer_host;
 	} else {									# nope.  Must be dotted-dec.
 		$addr_type = 1;
 		$peer_host = inet_aton( $peer_host );
